@@ -839,6 +839,11 @@ properties:
     url: "some-url"
 
   router:
+    status:
+      host: "127.0.0.1"
+      port: 17023
+      user: "admin"
+      pass: "admin"
     debug_address: 127.0.0.1:17003
     enable_ssl: true
     ssl_cert: |

@@ -7,6 +7,8 @@
       "compiled_release_url": "https://s3.amazonaws.com/pcfdev/compiled-releases/cf-v239-14-g8e63f5b.tgz"
     },
     "routing" : {
+      "path": "/Users/pivotal/workspace/routing-release",
+
       "version": "0.136.0-4-g21a8b92",
       "sha1": "f026da2cbd2400fb228b6d2e4f2077b2b897b290",
       "source_location": "https://github.com/cloudfoundry-incubator/routing-release",
