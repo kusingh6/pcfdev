@@ -28,33 +28,30 @@
             "ssh_keypair_name": "{{user `ssh_keypair_name`}}",
             "ssh_private_key_file": "{{user `ssh_private_key_file`}}",
             "ami_block_device_mappings": [{
-              "device_name": "/dev/sda1",
-              "volume_type": "gp2",
-              "volume_size": "{{user `disk_size`}}",
-              "delete_on_termination": true
+                "device_name": "/dev/sda1",
+                "volume_type": "gp2",
+                "volume_size": "{{user `disk_size`}}",
+                "delete_on_termination": true
             }],
             "launch_block_device_mappings": [{
-              "device_name": "/dev/sda1",
-              "volume_type": "io1",
-              "iops": "1800",
-              "volume_size": "{{user `disk_size`}}",
-              "delete_on_termination": true
+                "device_name": "/dev/sda1",
+                "volume_type": "io1",
+                "iops": "1800",
+                "volume_size": "{{user `disk_size`}}",
+                "delete_on_termination": true
             }],
             "ssh_username": "ubuntu",
             "ssh_timeout": "20m",
             "tags": {"Name": "v{{user `version`}}", "License":"{{user `eula_url`}}"}
         },
         {
-            "type": "virtualbox-iso",
-            "headless": true,
-            "vm_name": "test-{{user `distro`}}-v{{user `version`}}",
-            "guest_os_type": "Ubuntu_64",
-            "disk_size": "{{user `disk_size`}}000",
+            "type": "virtualbox-ovf",
+            "source_path": "/Users/pivotal/Documents/pcfdev-1-test.ova",
             "ssh_username": "vcap",
             "ssh_password": "vcap",
-            "iso_url": "https://pcfdev.s3.amazonaws.com/artifacts/ubuntu-14.04.4-server-amd64.iso",
-            "iso_checksum": "2ac1f3e0de626e54d05065d6f549fa3a",
-            "iso_checksum_type": "md5",
+            "headless": true,
+
+            "vm_name": "test-{{user `distro`}}-v{{user `version`}}",
             "http_directory": "preseed",
             "ssh_timeout": "20m",
             "shutdown_command": "echo vcap | sudo -S shutdown -P now",
@@ -85,23 +82,22 @@
             "type": "shell",
             "execute_command": "echo vcap | {{ .Vars }} sudo -E -S sh '{{ .Path }}'",
             "inline": [
-                "mkdir /var/pcfdev/",
-                "echo 'hello' > /var/pcfdev/my-file"
+                "cp /var/pcfdev/my-file /var/pcfdev/finished"
             ]
         }
     ],
     "post-processors": [
         {
             "type": "shell-local",
-            "only": ["virtualbox-iso"],
+            "only": ["virtualbox-ovf"],
             "inline": ["ls $PWD/*/*.ova"],
             "keep_input_artifact": true
         },
         {
-             "type": "vagrant",
-             "only": ["amazon-ebs"],
-             "output": "{{user `distro`}}-{{.Provider}}-v{{user `version`}}.box",
-             "keep_input_artifact": true
+            "type": "vagrant",
+            "only": ["amazon-ebs"],
+            "output": "{{user `distro`}}-{{.Provider}}-v{{user `version`}}.box",
+            "keep_input_artifact": true
         }
     ]
 }
