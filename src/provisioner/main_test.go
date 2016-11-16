@@ -39,10 +39,11 @@ var _ = Describe("PCF Dev provision", func() {
 		os.RemoveAll(filepath.Join(pwd, "provision"))
 		os.RemoveAll(filepath.Join(pwd, "provision-script"))
 		Expect(exec.Command("docker", "rm", dockerID, "-f").Run()).To(Succeed())
+
 	})
 
 	It("should provision PCF Dev", func() {
-		session := provision(dockerID)
+		session := provisionForVirtualBox(dockerID)
 		Expect(session).To(gbytes.Say("Waiting for services to start..."))
 
 		session = runSuccessfully(exec.Command("docker", "exec", dockerID, "file", "/run/pcfdev-healthcheck"), "1s")
@@ -50,7 +51,7 @@ var _ = Describe("PCF Dev provision", func() {
 	})
 
 	It("should set up the monitrc files for an HTTP server and an root executable _ctl script running on the box", func() {
-		provision(dockerID)
+		provisionForVirtualBox(dockerID)
 
 		session := runSuccessfully(exec.Command("docker", "exec", dockerID, "cat", "/var/vcap/monit/job/1001_pcfdev_api.monitrc"), "1s")
 		Expect(session).To(gbytes.Say("check process pcfdev-api"))
@@ -66,21 +67,21 @@ var _ = Describe("PCF Dev provision", func() {
 	})
 
 	It("should create certificates", func() {
-		provision(dockerID)
+		provisionForVirtualBox(dockerID)
 		runSuccessfully(exec.Command("docker", "exec", dockerID, "bash", "-c", "echo 127.0.0.1 local.pcfdev.io >> /etc/hosts"), "1s")
 		runSuccessfully(exec.Command("docker", "exec", "-d", dockerID, "service", "nginx", "start"), "1s")
 		runSuccessfully(exec.Command("docker", "exec", dockerID, "curl", "--cacert", "/var/pcfdev/openssl/ca_cert.pem", "https://local.pcfdev.io:443"), "1s")
 	})
 
 	It("should disable HSTS in UAA", func() {
-		provision(dockerID)
+		provisionForVirtualBox(dockerID)
 
 		session := runSuccessfully(exec.Command("docker", "exec", dockerID, "grep", "-A", "1", "<param-name>hstsEnabled</param-name>", "/var/vcap/packages/uaa/tomcat/conf/web.xml"), "1s")
 		Eventually(session).Should(gbytes.Say("<param-value>false</param-value>"))
 	})
 
 	It("should directly insert the internal-ip into the dns_server flag of garden", func() {
-		provision(dockerID)
+		provisionForVirtualBox(dockerID)
 
 		output, err := exec.Command("docker", "exec", dockerID, "ip", "route", "get", "1").Output()
 		Expect(err).NotTo(HaveOccurred())
@@ -91,19 +92,49 @@ var _ = Describe("PCF Dev provision", func() {
 		Eventually(session).Should(gbytes.Say("-dnsServer=" + internalIP))
 	})
 
+	Describe("external access", func() {
+		Context("On AWS", func() {
+			It("should not allow connections by default", func() {
+				provisionForAws(dockerID)
+				runSuccessfully(exec.Command("docker", "exec", dockerID, "iptables", "-C", "INPUT", "-p", "tcp", "-j", "DROP"), "5s")
+			})
+
+			It("should allow external access to http cf router", func() {
+				provisionForAws(dockerID)
+				runSuccessfully(exec.Command("docker", "exec", dockerID, "iptables", "-C", "INPUT", "-p", "tcp", "--dport", "80", "-j", "ACCEPT"), "1s")
+			})
+
+			It("should allow external access to https cf router", func() {
+				provisionForAws(dockerID)
+				runSuccessfully(exec.Command("docker", "exec", dockerID, "iptables", "-C", "INPUT", "-p", "tcp", "--dport", "443", "-j", "ACCEPT"), "1s")
+			})
+
+			It("should allow external access to ssh", func() {
+				provisionForAws(dockerID)
+				runSuccessfully(exec.Command("docker", "exec", dockerID, "iptables", "-C", "INPUT", "-p", "tcp", "--dport", "22", "-j", "ACCEPT"), "1s")
+			})
+
+			It("should allow external access to ethernet", func() {
+				provisionForAws(dockerID)
+				runSuccessfully(exec.Command("docker", "exec", dockerID, "iptables", "-C", "INPUT", "-p", "tcp", "--dport", "2222", "-j", "ACCEPT"), "1s")
+			})
+		})
+
+		Context("On Virtualbox", func() {
+			It("should allow connections by default", func() {
+				provisionForVirtualBox(dockerID)
+				runFailure(exec.Command("docker", "exec", dockerID, "iptables", "-C", "INPUT", "-p", "tcp", "-j", "DROP"), "5s")
+				runFailure(exec.Command("docker", "exec", dockerID, "iptables", "-C", "INPUT", "-p", "tcp", "-j", "REJECT"), "5s")
+			})
+		})
+	})
+
 	It("should resolve *.cf.internal to localhost using Dnsmasq", func() {
-		provision(dockerID)
+		provisionForVirtualBox(dockerID)
 		session := runSuccessfully(exec.Command("docker", "exec", dockerID, "host", "bbs.service.cf.internal"), "1s")
 		Eventually(session).Should(gbytes.Say(`bbs.service.cf.internal has address 127.0.0.1`))
 	})
 
-	It("should block external access to mysql and rabbit", func() {
-		provision(dockerID)
-		runSuccessfully(exec.Command("docker", "exec", dockerID, "iptables", "-C", "INPUT", "-i", "eth1", "-p", "tcp", "--dport", "4568", "-j", "REJECT"), "1s")
-		runSuccessfully(exec.Command("docker", "exec", dockerID, "iptables", "-C", "INPUT", "-i", "eth1", "-p", "tcp", "--dport", "4567", "-j", "REJECT"), "1s")
-		runSuccessfully(exec.Command("docker", "exec", dockerID, "iptables", "-C", "INPUT", "-i", "eth1", "-p", "tcp", "--dport", "25672", "-j", "REJECT"), "1s")
-		runSuccessfully(exec.Command("docker", "exec", dockerID, "iptables", "-C", "INPUT", "-i", "eth1", "-p", "tcp", "--dport", "15672", "-j", "REJECT"), "1s")
-	})
 
 	Context("when the distribution is not 'pcf'", func() {
 		BeforeEach(func() {
@@ -111,7 +142,7 @@ var _ = Describe("PCF Dev provision", func() {
 		})
 
 		It("should not disable HSTS in UAA", func() {
-			provision(dockerID)
+			provisionForVirtualBox(dockerID)
 
 			session, err := gexec.Start(exec.Command("docker", "exec", dockerID, "grep", "<param-name>hstsEnabled</param-name>", "/var/vcap/packages/uaa/tomcat/conf/web.xml"), GinkgoWriter, GinkgoWriter)
 			Expect(err).NotTo(HaveOccurred())
@@ -145,13 +176,24 @@ var _ = Describe("PCF Dev provision", func() {
 	})
 })
 
-func provision(dockerID string) *gexec.Session {
-	return runSuccessfully(exec.Command("docker", "exec", dockerID, "/go/src/provisioner/provision", "local.pcfdev.io", "192.168.11.11"), "10s")
+func provisionForVirtualBox(dockerID string) *gexec.Session {
+	return runSuccessfully(exec.Command("docker", "exec", dockerID, "/go/src/provisioner/provision", "local.pcfdev.io", "192.168.11.11", "", "", "virtualbox"), "10s")
+}
+
+func provisionForAws(dockerID string) *gexec.Session {
+	return runSuccessfully(exec.Command("docker", "exec", dockerID, "/go/src/provisioner/provision", "local.pcfdev.io", "192.168.11.11", "", "", "aws"), "10s")
 }
 
 func runSuccessfully(command *exec.Cmd, timeout string) *gexec.Session {
 	session, err := gexec.Start(command, GinkgoWriter, GinkgoWriter)
 	Expect(err).NotTo(HaveOccurred())
 	Eventually(session, timeout).Should(gexec.Exit(0))
+	return session
+}
+
+func runFailure(command *exec.Cmd, timeout string) *gexec.Session {
+	session, err := gexec.Start(command, GinkgoWriter, GinkgoWriter)
+	Expect(err).NotTo(HaveOccurred())
+	Consistently(session, timeout).ShouldNot(gexec.Exit(0))
 	return session
 }
