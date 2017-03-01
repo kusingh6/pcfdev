@@ -352,8 +352,10 @@ properties:
     require_ssl: false
   cf_networking:
     garden_external_networker:
-      cni_plugin_dir: /var/vcap/packages/runc-cni/bin
-      cni_config_dir: /var/vcap/jobs/garden-cni/config/cni
+      # cni_plugin_dir: /var/vcap/packages/runc-cni/bin
+      # cni_config_dir: /var/vcap/jobs/garden-cni/config/cni
+      cni_plugin_dir: /var/vcap/packages/flannel/bin
+      cni_config_dir: /var/vcap/jobs/cni-flannel/config/cni
     vxlan_policy_agent:
       policy_server_url: https://policy-server.service.cf.internal:4003
       debug_server_port: 22223
@@ -1753,6 +1755,8 @@ properties:
         - doppler.firehose
         - routing.router_groups.read
         - routing.router_groups.write
+        - network.admin
+        - network.write
     require_https: true
     jwt:
       policy:
